@@ -63,6 +63,8 @@ def remove_app(name: str):
 
     if not icon_path.exists():
         print(f"[WARNING] webapp icon with name '{name}' not found.")
+        desktop_file.unlink()
+        return
 
     desktop_file.unlink()
     icon_path.unlink()
