@@ -69,7 +69,7 @@ def remove_app(name: str):
 
 
 def usage(program_name: str):
-    print(f"\nUsage: {program_name} <SUBCOMMAND> [ARGS]")
+    print(f"Usage: {program_name} <SUBCOMMAND> [ARGS]")
     print("Subcommands:")
     print("    add <name> <url> <icon_url>        add a new webapp")
     print("    remove <name>                      remove a webapp")
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     program_name, *argv = argv
 
     if len(argv) < 1:
-        print("[ERROR] no subcommand provided.")
+        print("[ERROR] no subcommand provided.\n")
         usage(program_name)
         exit(1)
 
@@ -90,11 +90,11 @@ if __name__ == "__main__":
     match subcommand:
         case "add":
             if len(argv) < 3:
-                print("[ERROR] not enough arguments provided.")
+                print("[ERROR] not enough arguments provided.\n")
                 usage(program_name)
                 exit(1)
             if len(argv) > 3:
-                print("[ERROR] too many arguments provided.")
+                print("[ERROR] too many arguments provided.\n")
                 usage(program_name)
                 exit(1)
             name, url, icon_url = argv
@@ -104,11 +104,11 @@ if __name__ == "__main__":
 
         case "remove":
             if len(argv) < 1:
-                print("[ERROR] not enough arguments provided.")
+                print("[ERROR] not enough arguments provided.\n")
                 usage(program_name)
                 exit(1)
             if len(argv) > 1:
-                print("[ERROR] too many arguments provided.")
+                print("[ERROR] too many arguments provided.\n")
                 usage(program_name)
                 exit(1)
             name = argv[0]
@@ -119,6 +119,6 @@ if __name__ == "__main__":
             usage(program_name)
             exit(0)
         case _:
-            print("[ERROR] unknown subcommand provided.")
+            print("[ERROR] unknown subcommand provided.\n")
             usage(program_name)
             exit(1)
