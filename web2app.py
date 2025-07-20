@@ -32,6 +32,7 @@ import sys
 from pathlib import Path
 
 import requests
+from requests.models import MissingSchema
 
 
 def download_file(url: str, file_path: Path):
@@ -42,7 +43,10 @@ def download_file(url: str, file_path: Path):
         with open(file_path, "wb") as f:
             f.write(response.content)
     except requests.HTTPError as err:
-        print(f"[ERROR] failed to download file: {file_path}\n{err}")
+        print(f"[ERROR] failed to download file: {file_path}.\nerror trace: {err}\n")
+        exit(1)
+    except MissingSchema as err:
+        print(f"[ERROR] failed to parse icon url: {url}.\nerror trace: {err}\n")
         exit(1)
 
 
