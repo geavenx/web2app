@@ -1,5 +1,7 @@
 # Web2app
 
+- **This script uses `chromium` to create the desktop entry files.**
+
 `web2app` is a python script to add/remove desktop entry files for websites, so
 they act like an actual app in your system.
 
