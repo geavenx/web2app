@@ -5,6 +5,13 @@
 `web2app` is a python script to add/remove desktop entry files for websites, so
 they act like an actual app in your system.
 
+## Requirements
+
+- python 3.10+
+- [chromium](https://www.chromium.org/getting-involved/download-chromium/)
+- requests
+  - `python3 -m pip install requests`
+
 ## Usage
 
 ### Installing
