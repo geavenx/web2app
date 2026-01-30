@@ -111,7 +111,7 @@ def usage(program_name: str):
     print("\nFYI: `<icon_url>` must be a png file, use: https://dashboardicons.com")
 
 
-if __name__ == "__main__":
+def main():
     argv = sys.argv
     program_name, *argv = argv
 
@@ -156,3 +156,7 @@ if __name__ == "__main__":
             print("[ERROR] unknown subcommand provided.\n")
             usage(program_name)
             exit(1)
+
+
+if __name__ == "__main__":
+    main()
