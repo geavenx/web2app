@@ -38,7 +38,7 @@ from requests.models import MissingSchema
 
 # Supported Chromium-based browsers in order of preference
 SUPPORTED_BROWSERS = [
-    "helium-browser"
+    "helium-browser",
     "chromium",
     "chromium-browser",
     "google-chrome",
@@ -158,6 +158,8 @@ def usage(program_name: str):
     print("\nOptions:")
     print(
         "    --platform=<wayland|x11>       display server (auto-detected if not specified)"
+    )
+    print(
         "    --browser=<name>               browser to use (auto-detected if not specified)"
     )
     print(
