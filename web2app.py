@@ -29,11 +29,33 @@
 # SOFTWARE.
 
 import os
+import shutil
 import sys
 from pathlib import Path
 
 import requests
 from requests.models import MissingSchema
+
+# Supported Chromium-based browsers in order of preference
+SUPPORTED_BROWSERS = [
+    "helium-browser"
+    "chromium",
+    "chromium-browser",
+    "google-chrome",
+    "google-chrome-stable",
+    "brave-browser",
+    "brave",
+    "microsoft-edge",
+    "microsoft-edge-stable",
+]
+
+
+def detect_browser() -> str | None:
+    """Auto-detect the first available Chromium-based browser."""
+    for browser in SUPPORTED_BROWSERS:
+        if shutil.which(browser):
+            return browser
+    return None
 
 
 def detect_display_server() -> str:
@@ -61,7 +83,7 @@ def download_file(url: str, file_path: Path):
 
 
 def write_desktop_file(
-    url: str, name: str, file_path: Path, icon_path: Path, platform: str
+        url: str, name: str, file_path: Path, icon_path: Path, platform: str, browser: str
 ):
     platform_flag = f"--ozone-platform={platform}" if platform else ""
     content = f"""
@@ -69,7 +91,8 @@ def write_desktop_file(
 Version=1.0
 Name={name}
 Comment={name}
-Exec=chromium --new-window {platform_flag} --app={url} --name={name} --class={name}
+Exec={browser} --new-window {platform_flag} --app={url} --name={name} --class={name}
+>>>>>>> f03086e (feat: support multiple Chromium-based browsers)
 Terminal=false
 Type=Application
 Icon={icon_path}
@@ -81,9 +104,16 @@ StartupNotify=true"""
     file_path.chmod(0o755)
 
 
-def create_app(name: str, url: str, icon_url: str, platform: str | None = None):
+def create_app(name: str, url: str, icon_url: str, platform: str | None = None, browser: str | None = None):
     if platform is None:
         platform = detect_display_server()
+
+    if browser is None:
+        browser = detect_browser()
+        if browser is None:
+            print("[ERROR] no supported browser found.")
+            print("-> supported browsers: " + ", ".join(SUPPORTED_BROWSERS))
+            exit(1)
 
     applications_dir = Path(f"{Path.home()}/.local/share/applications")
     icon_dir = Path(f"{applications_dir}/icons")
@@ -93,7 +123,7 @@ def create_app(name: str, url: str, icon_url: str, platform: str | None = None):
     icon_path = Path(f"{icon_dir}/{name}.png")
 
     download_file(icon_url, icon_path)
-    write_desktop_file(url, name, desktop_file, icon_path, platform)
+    write_desktop_file(url, name, desktop_file, icon_path, platform, browser)
 
 
 def remove_app(name: str):
@@ -121,13 +151,17 @@ def remove_app(name: str):
 def usage(program_name: str):
     print(f"Usage: {program_name} <SUBCOMMAND> [ARGS]")
     print("Subcommands:")
-    print("    add <name> <url> <icon_url> [--platform=<wayland|x11>]")
+    print("    add <name> <url> <icon_url> [--platform=<wayland|x11>] [--browser=<name>]")
     print("                                   add a new webapp")
     print("    remove <name>                  remove a webapp")
     print("    help                           prints this usage message to stdout.")
     print("\nOptions:")
     print(
         "    --platform=<wayland|x11>       display server (auto-detected if not specified)"
+        "    --browser=<name>               browser to use (auto-detected if not specified)"
+    )
+    print(
+        "                                   supported: " + ", ".join(SUPPORTED_BROWSERS)
     )
     print("\nFYI: `<icon_url>` must be a png file, use: https://dashboardicons.com")
 
@@ -146,6 +180,7 @@ if __name__ == "__main__":
         case "add":
             # Parse optional --platform flag
             platform = None
+            browser = None
             positional_args = []
             for arg in argv:
                 if arg.startswith("--platform="):
@@ -156,6 +191,9 @@ if __name__ == "__main__":
                         )
                         usage(program_name)
                         exit(1)
+
+                if arg.startswith("--browser="):
+                    browser = arg.split("=", 1)[1]
                 else:
                     positional_args.append(arg)
 
@@ -168,7 +206,7 @@ if __name__ == "__main__":
                 usage(program_name)
                 exit(1)
             name, url, icon_url = positional_args
-            create_app(name, url, icon_url, platform)
+            create_app(name, url, icon_url, platform, browser)
             print(f"{program_name}: web-app '{name}' created successfully.")
             exit(0)
 
