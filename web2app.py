@@ -29,11 +29,11 @@
 # SOFTWARE.
 
 import os
-import shutil
 import re
+import shutil
 import sys
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from requests.models import MissingSchema
@@ -107,9 +107,7 @@ def validate_icon_url(url: str) -> bool:
         ]
 
         if not any(t in content_type for t in valid_types):
-            print(
-                f"[WARNING] icon URL may not be a valid image (Content-Type: {content_type})"
-            )
+            print(f"[WARNING] icon URL may not be a valid image (Content-Type: {content_type})")
             print("-> continuing anyway, but the icon might not display correctly")
 
         return True
@@ -117,6 +115,59 @@ def validate_icon_url(url: str) -> bool:
         print(f"[WARNING] could not verify icon URL: {err}")
         print("-> continuing anyway, but the icon might not work")
         return True  # Allow to continue, download_file will catch actual errors
+
+
+def fetch_favicon(url: str) -> str | None:
+    """Try to fetch favicon URL from a website.
+
+    Tries in order:
+    1. Parse HTML for <link rel="icon"> tags
+    2. Common favicon locations (/favicon.ico, /favicon.png, /apple-touch-icon.png)
+    """
+    parsed = urlparse(url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+    # Try to fetch the page and parse for favicon link
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        # Look for <link rel="icon" href="..."> or <link rel="shortcut icon" href="...">
+        icon_patterns = [
+            r'<link[^>]+rel=["\'](?:shortcut )?icon["\'][^>]+href=["\']([^"\']+)["\']',
+            r'<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\'](?:shortcut )?icon["\']',
+            r'<link[^>]+rel=["\']apple-touch-icon["\'][^>]+href=["\']([^"\']+)["\']',
+        ]
+
+        for pattern in icon_patterns:
+            match = re.search(pattern, response.text, re.IGNORECASE)
+            if match:
+                icon_url = match.group(1)
+                # Handle relative URLs
+                if not icon_url.startswith(("http://", "https://")):
+                    icon_url = urljoin(base_url, icon_url)
+                return icon_url
+    except Exception:
+        pass
+
+    # Try common favicon locations
+    common_paths = [
+        "/favicon.ico",
+        "/favicon.png",
+        "/apple-touch-icon.png",
+        "/apple-touch-icon-precomposed.png",
+    ]
+
+    for path in common_paths:
+        try:
+            favicon_url = urljoin(base_url, path)
+            response = requests.head(favicon_url, timeout=5, allow_redirects=True)
+            if response.status_code == 200:
+                return favicon_url
+        except Exception:
+            continue
+
+    return None
 
 
 def download_file(url: str, file_path: Path):
@@ -135,7 +186,7 @@ def download_file(url: str, file_path: Path):
 
 
 def write_desktop_file(
-        url: str, name: str, file_path: Path, icon_path: Path, platform: str, browser: str
+    url: str, name: str, file_path: Path, icon_path: Path, platform: str, browser: str
 ):
     platform_flag = f"--ozone-platform={platform}" if platform else ""
     content = f"""
@@ -144,7 +195,6 @@ Version=1.0
 Name={name}
 Comment={name}
 Exec={browser} --new-window {platform_flag} --app={url} --name={name} --class={name}
->>>>>>> f03086e (feat: support multiple Chromium-based browsers)
 Terminal=false
 Type=Application
 Icon={icon_path}
@@ -156,14 +206,13 @@ StartupNotify=true"""
     file_path.chmod(0o755)
 
 
-def create_app(name: str, url: str, icon_url: str, platform: str | None = None, browser: str | None = None):
-
-    # Validate URLs before proceeding
-    if not validate_url(url, "webapp URL"):
-        exit(1)
-    if not validate_icon_url(icon_url):
-        exit(1)
-
+def create_app(
+    name: str,
+    url: str,
+    icon_url: str | None,
+    platform: str | None = None,
+    browser: str | None = None,
+):
     if platform is None:
         platform = detect_display_server()
 
@@ -180,6 +229,22 @@ def create_app(name: str, url: str, icon_url: str, platform: str | None = None, 
 
     desktop_file = Path(f"{applications_dir}/{name}.desktop")
     icon_path = Path(f"{icon_dir}/{name}.png")
+
+    # Auto-fetch favicon if icon_url not provided
+    if icon_url is None:
+        print(f"Fetching favicon from {url}...")
+        icon_url = fetch_favicon(url)
+        if icon_url is None:
+            print("[ERROR] could not auto-detect favicon. Please provide an icon URL manually.")
+            print("-> tip: use https://dashboardicons.com to find icons")
+            exit(1)
+        print(f"Found favicon: {icon_url}")
+    else:
+        # Validate URLs before proceeding
+        if not validate_url(url, "webapp URL"):
+            exit(1)
+        if not validate_icon_url(icon_url):
+            exit(1)
 
     download_file(icon_url, icon_path)
     write_desktop_file(url, name, desktop_file, icon_path, platform, browser)
@@ -257,15 +322,9 @@ def usage(program_name: str):
     print("    remove <name>                  remove a webapp")
     print("    help                           prints this usage message to stdout.")
     print("\nOptions:")
-    print(
-        "    --platform=<wayland|x11>       display server (auto-detected if not specified)"
-    )
-    print(
-        "    --browser=<name>               browser to use (auto-detected if not specified)"
-    )
-    print(
-        "                                   supported: " + ", ".join(SUPPORTED_BROWSERS)
-    )
+    print("    --platform=<wayland|x11>       display server (auto-detected if not specified)")
+    print("    --browser=<name>               browser to use (auto-detected if not specified)")
+    print("                                   supported: " + ", ".join(SUPPORTED_BROWSERS))
     print("\nFYI: `<icon_url>` must be a png file, use: https://dashboardicons.com")
 
 
@@ -281,7 +340,7 @@ def main():
     subcommand, *argv = argv
     match subcommand:
         case "add":
-            # Parse optional --platform flag
+            # Parse optional flags
             platform = None
             browser = None
             positional_args = []
@@ -294,13 +353,12 @@ def main():
                         )
                         usage(program_name)
                         exit(1)
-
-                if arg.startswith("--browser="):
+                elif arg.startswith("--browser="):
                     browser = arg.split("=", 1)[1]
                 else:
                     positional_args.append(arg)
 
-            if len(positional_args) < 3:
+            if len(positional_args) < 2:
                 print("[ERROR] not enough arguments provided.\n")
                 usage(program_name)
                 exit(1)
@@ -308,7 +366,8 @@ def main():
                 print("[ERROR] too many arguments provided.\n")
                 usage(program_name)
                 exit(1)
-            name, url, icon_url = positional_args
+            name, url = positional_args[0], positional_args[1]
+            icon_url = positional_args[2] if len(positional_args) == 3 else None
             create_app(name, url, icon_url, platform, browser)
             print(f"{program_name}: web-app '{name}' created successfully.")
             exit(0)
