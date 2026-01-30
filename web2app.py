@@ -30,6 +30,7 @@
 
 import os
 import shutil
+import re
 import sys
 from pathlib import Path
 
@@ -148,11 +149,53 @@ def remove_app(name: str):
     icon_path.unlink()
 
 
+def list_apps():
+    """List all web apps created by web2app."""
+    applications_dir = Path(f"{Path.home()}/.local/share/applications")
+    icon_dir = Path(f"{applications_dir}/icons")
+
+    if not applications_dir.exists():
+        print("No web apps found.")
+        return
+
+    webapps = []
+    for desktop_file in applications_dir.glob("*.desktop"):
+        try:
+            content = desktop_file.read_text()
+            # Check if this is a web2app-created file (has --app= in Exec line)
+            if "--app=" not in content:
+                continue
+
+            # Parse name and URL
+            name_match = re.search(r"^Name=(.+)$", content, re.MULTILINE)
+            exec_match = re.search(r"--app=(\S+)", content)
+
+            if name_match and exec_match:
+                name = name_match.group(1)
+                url = exec_match.group(1)
+                icon_path = Path(f"{icon_dir}/{desktop_file.stem}.png")
+                has_icon = icon_path.exists()
+                webapps.append((name, url, has_icon))
+        except Exception:
+            continue
+
+    if not webapps:
+        print("No web apps found.")
+        return
+
+    print("Installed web apps:")
+    for name, url, has_icon in webapps:
+        icon_status = "" if has_icon else " (no icon)"
+        print(f"  {name:20} {url}{icon_status}")
+    print(f"\nTotal: {len(webapps)} web app(s)")
+
+
 def usage(program_name: str):
     print(f"Usage: {program_name} <SUBCOMMAND> [ARGS]")
     print("Subcommands:")
     print("    add <name> <url> <icon_url> [--platform=<wayland|x11>] [--browser=<name>]")
     print("                                   add a new webapp")
+    print("    list                           list all installed webapps")
     print("    remove <name>                  remove a webapp")
     print("    help                           prints this usage message to stdout.")
     print("\nOptions:")
@@ -224,6 +267,9 @@ if __name__ == "__main__":
             name = argv[0]
             remove_app(name)
             print(f"{program_name}: web-app '{name}' deleted successfully.")
+            exit(0)
+        case "list":
+            list_apps()
             exit(0)
         case "help":
             usage(program_name)
