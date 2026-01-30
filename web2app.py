@@ -32,6 +32,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 from requests.models import MissingSchema
@@ -65,6 +66,56 @@ def detect_display_server() -> str:
     if os.environ.get("XDG_SESSION_TYPE") == "wayland":
         return "wayland"
     return "x11"
+
+
+def validate_url(url: str, url_type: str = "URL") -> bool:
+    """Validate that a URL has proper format (http:// or https://)."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            print(f"[ERROR] invalid {url_type}: '{url}'")
+            print(f"-> {url_type} must start with http:// or https://")
+            return False
+        if not parsed.netloc:
+            print(f"[ERROR] invalid {url_type}: '{url}'")
+            print(f"-> {url_type} is missing a domain")
+            return False
+        return True
+    except Exception:
+        print(f"[ERROR] failed to parse {url_type}: '{url}'")
+        return False
+
+
+def validate_icon_url(url: str) -> bool:
+    """Validate that an icon URL points to an image."""
+    if not validate_url(url, "icon URL"):
+        return False
+
+    try:
+        response = requests.head(url, timeout=10, allow_redirects=True)
+        response.raise_for_status()
+
+        content_type = response.headers.get("Content-Type", "").lower()
+        valid_types = [
+            "image/png",
+            "image/x-icon",
+            "image/ico",
+            "image/jpeg",
+            "image/svg+xml",
+            "image/webp",
+        ]
+
+        if not any(t in content_type for t in valid_types):
+            print(
+                f"[WARNING] icon URL may not be a valid image (Content-Type: {content_type})"
+            )
+            print("-> continuing anyway, but the icon might not display correctly")
+
+        return True
+    except requests.RequestException as err:
+        print(f"[WARNING] could not verify icon URL: {err}")
+        print("-> continuing anyway, but the icon might not work")
+        return True  # Allow to continue, download_file will catch actual errors
 
 
 def download_file(url: str, file_path: Path):
@@ -105,6 +156,13 @@ StartupNotify=true"""
 
 
 def create_app(name: str, url: str, icon_url: str, platform: str | None = None, browser: str | None = None):
+
+    # Validate URLs before proceeding
+    if not validate_url(url, "webapp URL"):
+        exit(1)
+    if not validate_icon_url(icon_url):
+        exit(1)
+
     if platform is None:
         platform = detect_display_server()
 
