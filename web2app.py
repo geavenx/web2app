@@ -28,11 +28,21 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import os
 import sys
 from pathlib import Path
 
 import requests
 from requests.models import MissingSchema
+
+
+def detect_display_server() -> str:
+    """Auto-detect the display server (wayland or x11)."""
+    if os.environ.get("WAYLAND_DISPLAY"):
+        return "wayland"
+    if os.environ.get("XDG_SESSION_TYPE") == "wayland":
+        return "wayland"
+    return "x11"
 
 
 def download_file(url: str, file_path: Path):
@@ -50,13 +60,16 @@ def download_file(url: str, file_path: Path):
         exit(1)
 
 
-def write_desktop_file(url: str, name: str, file_path: Path, icon_path: Path):
+def write_desktop_file(
+    url: str, name: str, file_path: Path, icon_path: Path, platform: str
+):
+    platform_flag = f"--ozone-platform={platform}" if platform else ""
     content = f"""
 [Desktop Entry]
 Version=1.0
 Name={name}
 Comment={name}
-Exec=chromium --new-window --ozone-platform=wayland --app={url} --name={name} --class={name}
+Exec=chromium --new-window {platform_flag} --app={url} --name={name} --class={name}
 Terminal=false
 Type=Application
 Icon={icon_path}
@@ -68,7 +81,10 @@ StartupNotify=true"""
     file_path.chmod(0o755)
 
 
-def create_app(name: str, url: str, icon_url: str):
+def create_app(name: str, url: str, icon_url: str, platform: str | None = None):
+    if platform is None:
+        platform = detect_display_server()
+
     applications_dir = Path(f"{Path.home()}/.local/share/applications")
     icon_dir = Path(f"{applications_dir}/icons")
     icon_dir.mkdir(exist_ok=True, parents=True)
@@ -77,7 +93,7 @@ def create_app(name: str, url: str, icon_url: str):
     icon_path = Path(f"{icon_dir}/{name}.png")
 
     download_file(icon_url, icon_path)
-    write_desktop_file(url, name, desktop_file, icon_path)
+    write_desktop_file(url, name, desktop_file, icon_path, platform)
 
 
 def remove_app(name: str):
@@ -105,9 +121,14 @@ def remove_app(name: str):
 def usage(program_name: str):
     print(f"Usage: {program_name} <SUBCOMMAND> [ARGS]")
     print("Subcommands:")
-    print("    add <name> <url> <icon_url>        add a new webapp")
-    print("    remove <name>                      remove a webapp")
-    print("    help                               prints this usage message to stdout.")
+    print("    add <name> <url> <icon_url> [--platform=<wayland|x11>]")
+    print("                                   add a new webapp")
+    print("    remove <name>                  remove a webapp")
+    print("    help                           prints this usage message to stdout.")
+    print("\nOptions:")
+    print(
+        "    --platform=<wayland|x11>       display server (auto-detected if not specified)"
+    )
     print("\nFYI: `<icon_url>` must be a png file, use: https://dashboardicons.com")
 
 
@@ -123,16 +144,31 @@ if __name__ == "__main__":
     subcommand, *argv = argv
     match subcommand:
         case "add":
-            if len(argv) < 3:
+            # Parse optional --platform flag
+            platform = None
+            positional_args = []
+            for arg in argv:
+                if arg.startswith("--platform="):
+                    platform = arg.split("=", 1)[1]
+                    if platform not in ("wayland", "x11"):
+                        print(
+                            f"[ERROR] invalid platform '{platform}'. Must be 'wayland' or 'x11'.\n"
+                        )
+                        usage(program_name)
+                        exit(1)
+                else:
+                    positional_args.append(arg)
+
+            if len(positional_args) < 3:
                 print("[ERROR] not enough arguments provided.\n")
                 usage(program_name)
                 exit(1)
-            if len(argv) > 3:
+            if len(positional_args) > 3:
                 print("[ERROR] too many arguments provided.\n")
                 usage(program_name)
                 exit(1)
-            name, url, icon_url = argv
-            create_app(name, url, icon_url)
+            name, url, icon_url = positional_args
+            create_app(name, url, icon_url, platform)
             print(f"{program_name}: web-app '{name}' created successfully.")
             exit(0)
 
