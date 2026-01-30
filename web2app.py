@@ -89,7 +89,7 @@ def remove_app(name: str):
     icon_path = Path(f"{icon_dir}/{name}.png")
 
     if not desktop_file.exists():
-        print(f"[ERROR] webapp with name '{name}' does not exit.")
+        print(f"[ERROR] webapp with name '{name}' does not exist.")
         print("-> tip: make sure that the case is matching.")
         exit(1)
 
