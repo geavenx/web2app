@@ -312,6 +312,62 @@ def list_apps():
         print(f"  {name:20} {url}{icon_status}")
     print(f"\nTotal: {len(webapps)} web app(s)")
 
+def update_app(
+    name: str,
+    new_url: str | None = None,
+    new_icon_url: str | None = None,
+    new_name: str | None = None,
+    platform: str | None = None,
+    browser: str | None = None
+):
+    """Update an existing webapp's URL, icon, or name."""
+    applications_dir = Path(f"{Path.home()}/.local/share/applications")
+    icon_dir = Path(f"{applications_dir}/icons")
+
+    desktop_file = Path(f"{applications_dir}/{name}.desktop")
+    icon_path = Path(f"{icon_dir}/{name}.png")
+
+    if not desktop_file.exists():
+        print(f"[ERROR] webapp with name '{name}' does not exist.")
+        print("-> tip: make sure that the case is matching.")
+        exit(1)
+
+    # Read current desktop file
+    content = desktop_file.read_text()
+
+    # Parse current URL from Exec line
+    exec_match = re.search(r"--app=(\S+)", content)
+    current_url = exec_match.group(1) if exec_match else ""
+
+    # Determine what to update
+    url = new_url if new_url else current_url
+    final_name = new_name if new_name else name
+
+    # Update icon if new_icon_url provided
+    if new_icon_url:
+        new_icon_path = Path(f"{icon_dir}/{final_name}.png")
+        download_file(new_icon_url, new_icon_path)
+        # Remove old icon if renaming
+        if new_name and icon_path.exists() and icon_path != new_icon_path:
+            icon_path.unlink()
+
+    # Handle rename
+    if new_name:
+        new_desktop_file = Path(f"{applications_dir}/{new_name}.desktop")
+        new_icon_path = Path(f"{icon_dir}/{new_name}.png")
+
+        # Rename icon if it exists and wasn't replaced
+        if icon_path.exists() and not new_icon_url:
+            icon_path.rename(new_icon_path)
+
+        # Remove old desktop file
+        desktop_file.unlink()
+        desktop_file = new_desktop_file
+        icon_path = new_icon_path
+
+    # Write updated desktop file
+    write_desktop_file(url, final_name, desktop_file, icon_path, platform, browser)
+
 
 def usage(program_name: str):
     print(f"Usage: {program_name} <SUBCOMMAND> [ARGS]")
@@ -320,11 +376,16 @@ def usage(program_name: str):
     print("                                   add a new webapp")
     print("    list                           list all installed webapps")
     print("    remove <name>                  remove a webapp")
+    print("    update <name> [OPTIONS]        update an existing webapp")
     print("    help                           prints this usage message to stdout.")
-    print("\nOptions:")
+    print("\nAdd Options:")
     print("    --platform=<wayland|x11>       display server (auto-detected if not specified)")
     print("    --browser=<name>               browser to use (auto-detected if not specified)")
     print("                                   supported: " + ", ".join(SUPPORTED_BROWSERS))
+    print("\nUpdate options:")
+    print("    --url=<new_url>                    change the webapp URL")
+    print("    --icon=<new_icon_url>              change the webapp icon")
+    print("    --rename=<new_name>                rename the webapp")
     print("\nFYI: `<icon_url>` must be a png file, use: https://dashboardicons.com")
 
 
@@ -388,6 +449,55 @@ def main():
         case "list":
             list_apps()
             exit(0)
+
+        case "update":
+            if len(argv) < 1:
+                print("[ERROR] not enough arguments provided.\n")
+                usage(program_name)
+                exit(1)
+
+            name = argv[0]
+            new_url = None
+            new_icon_url = None
+            new_name = None
+            platform = None
+            browser = None
+            positional_args = []
+
+            for arg in argv[1:]:
+                if arg.startswith("--url="):
+                    new_url = arg.split("=", 1)[1]
+                elif arg.startswith("--icon="):
+                    new_icon_url = arg.split("=", 1)[1]
+                elif arg.startswith("--rename="):
+                    new_name = arg.split("=", 1)[1]
+                elif arg.startswith("--platform="):
+                    platform = arg.split("=", 1)[1]
+                    if platform not in ("wayland", "x11"):
+                        print(
+                            f"[ERROR] invalid platform '{platform}'. Must be 'wayland' or 'x11'.\n"
+                        )
+                        usage(program_name)
+                        exit(1)
+                elif arg.startswith("--browser="):
+                    browser = arg.split("=", 1)[1]
+                else:
+                    print(f"[ERROR] unknown option: {arg}\n")
+                    usage(program_name)
+                    exit(1)
+
+            if not new_url and not new_icon_url and not new_name:
+                print(
+                    "[ERROR] at least one update option required (--url, --icon, or --rename).\n"
+                )
+                usage(program_name)
+                exit(1)
+
+            update_app(name, new_url, new_icon_url, new_name)
+            final_name = new_name if new_name else name
+            print(f"{program_name}: web-app '{final_name}' updated successfully.")
+            exit(0)
+
         case "help":
             usage(program_name)
             exit(0)
